@@ -63,8 +63,45 @@ def get_weather(city: str) -> str:
     now = w_data["now"]
     return f"{city_name}当前天气:{now['text']}，气温{now['temp']}摄氏度"
 
+#  新添加联网搜索功能工具
+from tavily import TavilyClient
+from config import TAVILY_API_KEY
+
+@tool
+def get_attraction(city: str, weather: str) -> str:
+    """根据城市和天气，使用Tavily Search API搜索并返回优化后的景点推荐。参数：城市名称，天气，返回：景点推荐及理由"""
+    # 2. 初始化Tavily客户端
+    tavily = TavilyClient(api_key=TAVILY_API_KEY)
+    
+    # 3. 构造一个精确的查询
+    query = f"'{city}' 在'{weather}'天气下最值得去的旅游景点推荐及理由"
+    
+    try:
+        # 4. 调用API，include_answer=True会返回一个综合性的回答
+        response = tavily.search(query=query, search_depth="basic", include_answer=True)
+        
+        # 5. Tavily返回的结果已经非常干净，可以直接使用
+        # response['answer'] 是一个基于所有搜索结果的总结性回答
+        if response.get("answer"):
+            return response["answer"]
+        
+        # 如果没有综合性回答，则格式化原始结果
+        formatted_results = []
+        for result in response.get("results", []):
+            formatted_results.append(f"- {result['title']}: {result['content']}")
+        
+        if not formatted_results:
+             return "抱歉，没有找到相关的旅游景点推荐。"
+
+        return "根据搜索，为您找到以下信息:\n" + "\n".join(formatted_results)
+
+    except Exception as e:
+        return f"错误:执行Tavily搜索时出现问题 - {e}"
+
+
+
 # 增强LLM的工具能力
-tools = [add, multiply, divide, get_weather]
+tools = [add, multiply, divide, get_weather, get_attraction]
 # 给工具起名字
 tools_by_name = {tool.name: tool for tool in tools}
 # 调用 llm 时，除了传入对话消息，还会附带 「可用工具列表」（工具名称 + 使用说明：也就是函数中的注释 + 参数格式：由@tool自动生成）
@@ -94,7 +131,7 @@ def llm_call(state: dict):
 
     return {
         # 返回的消息字典中会包含有关键字参数：tool_calls
-        "messages": [model_with_tools.invoke([SystemMessage(content="你是一个有用的助手，负责对一组输入执行算术运算和查询天气。")]+ state["messages"])],
+        "messages": [model_with_tools.invoke([SystemMessage(content="你是一个有用的助手，负责对一组输入执行算术运算和查询天气和景点推荐。")]+ state["messages"])],
         "llm_calls": state.get('llm_calls', 0) + 1  # 读出状态中llm调用次数，没有就当成0，然后+1
     }
 
@@ -167,7 +204,7 @@ agent = agent_builder.compile()
 from langchain.messages import HumanMessage
 
 # 输入消息：3加4等于多少。
-messages = [HumanMessage(content="今天北京天气怎么样？")]
+messages = [HumanMessage(content="今天北京天气怎么样？北京有哪些值得去的景点？")]
 
 # 这里的invoke是让agent运行，不是调用llm的意思,返回的是最终的状态
 messages = agent.invoke({"messages": messages})

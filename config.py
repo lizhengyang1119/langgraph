@@ -20,4 +20,7 @@ model = ChatOpenAI(
     extra_body={"thinking": {"type": "disabled"}} # 关闭思考模式
 )
 
+# 读取天气 API密钥
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+# 读取Tavily API密钥
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
