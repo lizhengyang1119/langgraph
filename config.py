@@ -20,3 +20,4 @@ model = ChatOpenAI(
     extra_body={"thinking": {"type": "disabled"}} # 关闭思考模式
 )
 
+WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")

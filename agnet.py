@@ -1,5 +1,4 @@
 from langchain.tools import tool
-from langchain_openai import ChatOpenAI
 # 导入模型实例
 from config import model
 
@@ -21,9 +20,51 @@ def divide(a: int, b: int) -> float:
     """计算 a 除以 b 的商（浮点数）。"""
     return a / b
 
+#  新添加天气功能工具
+import requests
+from config import WEATHER_API_KEY
+API_HOST = "https://kk4y3dqb52.re.qweatherapi.com"  # 控制台里的 API Host
+
+@tool
+def get_weather(city: str) -> str:
+    """查询某地真实的天气信息。参数：城市名称，返回：城市名称+当前天气+气温"""
+    headers = {"X-QW-Api-Key": WEATHER_API_KEY}
+
+    # 1. 城市搜索
+    geo_url = f"{API_HOST}/geo/v2/city/lookup"
+    geo_resp = requests.get(
+        geo_url,
+        params={"location": city, "number": 1, "lang": "zh"},
+        headers=headers,
+        timeout=10,
+    )
+    geo_resp.raise_for_status()
+    geo_data = geo_resp.json()
+    if geo_data.get("code") != "200" or not geo_data.get("location"):
+        return f"错误:未找到城市 {city}，code={geo_data.get('code')}"
+
+    loc = geo_data["location"][0]
+    location_id = loc["id"]
+    city_name = loc["name"]
+
+    # 2. 实时天气
+    weather_url = f"{API_HOST}/v7/weather/now"
+    w_resp = requests.get(
+        weather_url,
+        params={"location": location_id, "lang": "zh"},
+        headers=headers,
+        timeout=10,
+    )
+    w_resp.raise_for_status()
+    w_data = w_resp.json()
+    if w_data.get("code") != "200":
+        return f"错误:天气接口失败 code={w_data.get('code')}"
+
+    now = w_data["now"]
+    return f"{city_name}当前天气:{now['text']}，气温{now['temp']}摄氏度"
 
 # 增强LLM的工具能力
-tools = [add, multiply, divide]
+tools = [add, multiply, divide, get_weather]
 # 给工具起名字
 tools_by_name = {tool.name: tool for tool in tools}
 # 调用 llm 时，除了传入对话消息，还会附带 「可用工具列表」（工具名称 + 使用说明：也就是函数中的注释 + 参数格式：由@tool自动生成）
@@ -53,7 +94,7 @@ def llm_call(state: dict):
 
     return {
         # 返回的消息字典中会包含有关键字参数：tool_calls
-        "messages": [model_with_tools.invoke([SystemMessage(content="你是一个有用的助手，负责对一组输入执行算术运算。")]+ state["messages"])],
+        "messages": [model_with_tools.invoke([SystemMessage(content="你是一个有用的助手，负责对一组输入执行算术运算和查询天气。")]+ state["messages"])],
         "llm_calls": state.get('llm_calls', 0) + 1  # 读出状态中llm调用次数，没有就当成0，然后+1
     }
 
@@ -125,7 +166,8 @@ agent = agent_builder.compile()
 # 调用
 from langchain.messages import HumanMessage
 
-messages = [HumanMessage(content="3加4等于多少。")]
+# 输入消息：3加4等于多少。
+messages = [HumanMessage(content="今天北京天气怎么样？")]
 
 # 这里的invoke是让agent运行，不是调用llm的意思,返回的是最终的状态
 messages = agent.invoke({"messages": messages})
@@ -137,14 +179,14 @@ for m in messages["messages"]:
 
 
 
-"""
-用于可视化你构建的图
-"""
-from PIL import Image
-import io
-# 获取 PNG 二进制数据
-png_data = agent.get_graph().draw_mermaid_png()
-# 转换为 PIL Image 对象并显示
-img = Image.open(io.BytesIO(png_data))
-img.show()   # 会用系统默认图片查看器打开
+# """
+# 用于可视化你构建的图
+# """
+# from PIL import Image
+# import io
+# # 获取 PNG 二进制数据
+# png_data = agent.get_graph().draw_mermaid_png()
+# # 转换为 PIL Image 对象并显示
+# img = Image.open(io.BytesIO(png_data))
+# img.show()   # 会用系统默认图片查看器打开
 
